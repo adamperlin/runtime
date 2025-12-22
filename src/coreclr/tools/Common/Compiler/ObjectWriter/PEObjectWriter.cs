@@ -659,7 +659,7 @@ namespace ILCompiler.ObjectWriter
             relocHeader.SectionCharacteristics |= SectionCharacteristics.MemDiscardable;
         }
 
-        private protected override void EmitObjectFile(Stream outputFileStream)
+        private protected override void EmitObjectFile(Stream outputFileStream, Logger logger)
         {
             if (_baseRelocMap.Count > 0)
             {
