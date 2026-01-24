@@ -235,6 +235,8 @@ interface Assets {
     hash?: string;
     coreAssembly: AssemblyAsset[];
     assembly: AssemblyAsset[];
+    coreR2R?: AssemblyAsset[];
+    R2R?: AssemblyAsset[];
     lazyAssembly?: AssemblyAsset[];
     corePdb?: PdbAsset[];
     pdb?: PdbAsset[];
@@ -441,7 +443,11 @@ type AssetBehaviors = SingleAssetBehaviors |
 /**
  * The javascript module that came from nuget package .
  */
- | "js-module-library-initializer";
+ | "js-module-library-initializer"
+/**
+ * TODO: rename and document me
+ */
+ | "r2r";
 declare const enum GlobalizationMode {
     /**
      * Load sharded ICU data.

@@ -335,8 +335,15 @@ static PInvokeTable s_PInvokeTables[] = {
 };
 const size_t s_PInvokeTablesCount = sizeof(s_PInvokeTables) / sizeof(s_PInvokeTables[0]);
 
+extern "C" void* BrowserHost_ExternalR2RProbe(const char* library_name, const char* entry_point_name);
+
 const void* callhelpers_pinvoke_override(const char* library_name, const char* entry_point_name)
 {
+    if (strncmp(library_name, "R2R.", 4) == 0)
+    {
+        return BrowserHost_ExternalR2RProbe(library_name + 4, entry_point_name);
+    }
+
     for (size_t i = 0; i < s_PInvokeTablesCount; i++)
     {
         if (strcmp(library_name, s_PInvokeTables[i].LibraryName) == 0)

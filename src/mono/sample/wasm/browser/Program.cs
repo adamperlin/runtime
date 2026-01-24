@@ -12,17 +12,16 @@ namespace Sample
     {
         public static Task<int> Main(string[] args)
         {
-            DisplayMeaning(42);
+            int result = TwoInts(20, 22);
+            if (result != 42)
+            {
+                throw new Exception($"Expected 42, got {result}");
+            }
+            Console.WriteLine("R2R test passed");
             return Task.FromResult(0);
         }
 
-        [JSImport("Sample.Test.displayMeaning", "main.js")]
-        internal static partial void DisplayMeaning(int meaning);
-
-        [JSExport]
-        internal static async Task PrintMeaning(Task<int> meaningPromise)
-        {
-            Console.WriteLine("Meaning of life is " + await meaningPromise);
-        }
+        [LibraryImport("R2R.test-module", EntryPoint = "wasm_test_Program__addTwoInts")]
+        internal static partial int TwoInts(int a, int b);
     }
 }

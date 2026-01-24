@@ -9,7 +9,7 @@ import { exit, runtimeState } from "./exit";
 import { createPromiseCompletionSource } from "./promise-completion-source";
 import { getIcuResourceName } from "./icu";
 import { loaderConfig } from "./config";
-import { fetchDll, fetchIcu, fetchPdb, fetchVfs, fetchWasm, loadDotnetModule, loadJSModule, nativeModulePromiseController, verifyAllAssetsDownloaded } from "./assets";
+import { fetchDll, fetchIcu, fetchPdb, fetchR2R, fetchVfs, fetchWasm, loadDotnetModule, loadJSModule, nativeModulePromiseController, verifyAllAssetsDownloaded } from "./assets";
 
 const runMainPromiseController = createPromiseCompletionSource<number>();
 
@@ -43,9 +43,11 @@ export async function createRuntime(downloadOnly: boolean): Promise<any> {
     const runtimeModulePromise: Promise<JsModuleExports> = loadDotnetModule(loaderConfig.resources.jsModuleRuntime[0]);
     const wasmNativePromise: Promise<Response> = fetchWasm(loaderConfig.resources.wasmNative[0]);
 
+    const coreR2RPromise = Promise.all((loaderConfig.resources.coreR2R || []).map(fetchR2R));
     const coreAssembliesPromise = Promise.all(loaderConfig.resources.coreAssembly.map(fetchDll));
     const coreVfsPromise = Promise.all((loaderConfig.resources.coreVfs || []).map(fetchVfs));
     const assembliesPromise = Promise.all(loaderConfig.resources.assembly.map(fetchDll));
+    const r2rPromise = Promise.all((loaderConfig.resources.R2R || []).map(fetchR2R));
     const vfsPromise = Promise.all((loaderConfig.resources.vfs || []).map(fetchVfs));
     const icuResourceName = getIcuResourceName();
     const icuDataPromise = icuResourceName ? Promise.all((loaderConfig.resources.icu || []).filter(asset => asset.name === icuResourceName).map(fetchIcu)) : Promise.resolve([]);
@@ -63,6 +65,7 @@ export async function createRuntime(downloadOnly: boolean): Promise<any> {
 
     await nativeModulePromiseController.promise;
     await coreAssembliesPromise;
+    await coreR2RPromise;
     await coreVfsPromise;
     await vfsPromise;
     await icuDataPromise;
@@ -73,6 +76,7 @@ export async function createRuntime(downloadOnly: boolean): Promise<any> {
     }
 
     await assembliesPromise;
+    await r2rPromise;
     await corePDBsPromise;
     await pdbsPromise;
     await runtimeModuleReady;

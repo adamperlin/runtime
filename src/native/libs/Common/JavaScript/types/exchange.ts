@@ -4,8 +4,10 @@
 import type { check, error, info, warn, debug, fastCheck } from "../../../../corehost/browserhost/loader/logging";
 import type { resolveRunMainPromise, rejectRunMainPromise, getRunMainPromise, abortStartup } from "../../../../corehost/browserhost/loader/run";
 import type { addOnExitListener, isExited, isRuntimeRunning, quitNow } from "../../../../corehost/browserhost/loader/exit";
+import type { instantiateWasm } from "../../../../corehost/browserhost/host/assets";
 
-import type { installVfsFile, registerDllBytes, loadIcuData, initializeCoreCLR, registerPdbBytes } from "../../../../corehost/browserhost/host/host";
+import type { initializeCoreCLR } from "../../../../corehost/browserhost/host/host";
+import type { installVfsFile, registerDllBytes, loadIcuData, registerPdbBytes, instantiateR2RModule } from "../../../../corehost/browserhost/host/assets";
 import type { createPromiseCompletionSource, getPromiseCompletionSource, isControllablePromise } from "../../../../corehost/browserhost/loader/promise-completion-source";
 
 import type { isSharedArrayBuffer, zeroRegion } from "../../../System.Native.Browser/utils/memory";
@@ -91,6 +93,8 @@ export type BrowserHostExports = {
     loadIcuData: typeof loadIcuData
     initializeCoreCLR: typeof initializeCoreCLR
     registerPdbBytes: typeof registerPdbBytes
+    instantiateR2RModule: typeof instantiateR2RModule
+    instantiateWasm: typeof instantiateWasm
 }
 
 export type BrowserHostExportsTable = [
@@ -99,6 +103,8 @@ export type BrowserHostExportsTable = [
     typeof loadIcuData,
     typeof initializeCoreCLR,
     typeof registerPdbBytes,
+    typeof instantiateR2RModule,
+    typeof instantiateWasm,
 ]
 
 export type InteropJavaScriptExports = {

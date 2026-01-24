@@ -22,4 +22,6 @@ extern "C" {
     void SystemInteropJS_InvokeJSImportST (int32_t, void *) { _ASSERTE(!"Should not be reached"); }
     void SystemInteropJS_ReleaseCSOwnedObject (void *) { _ASSERTE(!"Should not be reached"); }
     void SystemInteropJS_ResolveOrRejectPromise (void *) { _ASSERTE(!"Should not be reached"); }
+    // dynamic loading R2R images is not supported in the corerun
+    void * BrowserHost_ExternalR2RProbe (void *,void *) { _ASSERTE(!"Should not be reached"); return nullptr; }
 }
