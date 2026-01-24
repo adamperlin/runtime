@@ -183,7 +183,12 @@ export function BrowserHost_ExternalR2RProbe(libraryName: CharPtr, entryPointNam
         _ems_.dotnetLogger.debug(`R2R export not found: '${entryPointNameStr}' in '${libraryNameStr}'`);
         return 0 as any;
     }
-    return exportFunc as unknown as VoidPtr;
+
+    const funcIndex = wasmMainTable.length;
+    wasmMainTable.grow(1);
+    wasmMainTable.set(funcIndex, exportFunc);
+
+    return funcIndex as any;
 }
 
 

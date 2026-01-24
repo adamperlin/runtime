@@ -12,7 +12,7 @@ namespace Sample
     {
         public static Task<int> Main(string[] args)
         {
-            int result = TwoInts(20, 22);
+            int result = TwoInts(1024,20, 22,0);
             if (result != 42)
             {
                 throw new Exception($"Expected 42, got {result}");
@@ -22,6 +22,6 @@ namespace Sample
         }
 
         [LibraryImport("R2R.test-module", EntryPoint = "wasm_test_Program__addTwoInts")]
-        internal static partial int TwoInts(int a, int b);
+        internal static partial int TwoInts(IntPtr sp, int a, int b, IntPtr pep);
     }
 }
