@@ -9,12 +9,6 @@ using ILCompiler.ObjectWriter.WasmInstructions;
 
 namespace ILCompiler.ObjectWriter
 {
-    public interface IWasmEncodable
-    {
-        int EncodeSize();
-        int Encode(Span<byte> buffer);
-    }
-
     public enum WasmSectionType
     {
         Custom = 0,
@@ -197,8 +191,7 @@ namespace ILCompiler.ObjectWriter
 
     public abstract class WasmImportType : IWasmEncodable
     {
-        public abstract int Encode(Span<byte> buffer);
-        public abstract int EncodeSize();
+        public abstract void Encode(ref WasmBinaryWriter writer);
     }
 
     public enum WasmExternalKind : byte
@@ -222,14 +215,11 @@ namespace ILCompiler.ObjectWriter
             Mutability = mutability;
         }
 
-        public override int Encode(Span<byte> buffer)
+        public override void Encode(ref WasmBinaryWriter writer)
         {
-            buffer[0] = (byte)ValueType;
-            buffer[1] = (byte)Mutability;
-            return 2;
+            writer.WriteByte((byte)ValueType);
+            writer.WriteByte((byte)Mutability);
         }
-
-        public override int EncodeSize() => 2;
     }
 
     public enum WasmLimitType : byte
@@ -256,26 +246,14 @@ namespace ILCompiler.ObjectWriter
             Max = max;
         }
 
-        public override int Encode(Span<byte> buffer)
+        public override void Encode(ref WasmBinaryWriter writer)
         {
-            int pos = 0;
-            buffer[pos++] = (byte)LimitType;
-            pos += DwarfHelper.WriteULEB128(buffer.Slice(pos), Min);
+            writer.WriteByte((byte)LimitType);
+            writer.WriteULEB128(Min);
             if (LimitType == WasmLimitType.HasMinAndMax)
             {
-                pos += DwarfHelper.WriteULEB128(buffer.Slice(pos), Max!.Value);
+                writer.WriteULEB128(Max!.Value);
             }
-            return pos;
-        }
-
-        public override int EncodeSize()
-        {
-            uint size = 1 + DwarfHelper.SizeOfULEB128(Min);
-            if (LimitType == WasmLimitType.HasMinAndMax)
-            {
-                size += DwarfHelper.SizeOfULEB128(Max!.Value);
-            }
-            return (int)size;
         }
     }
 
@@ -296,8 +274,7 @@ namespace ILCompiler.ObjectWriter
             Index = index;
         }
 
-        public int Encode(Span<byte> buffer) => Import.Encode(buffer);
-        public int EncodeSize() => Import.EncodeSize();
+        public void Encode(ref WasmBinaryWriter writer) => Import.Encode(ref writer);
 
 #nullable disable
     }

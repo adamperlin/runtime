@@ -111,10 +111,10 @@ namespace ILCompiler.ObjectWriter
             writer.WriteUtf8WithLength(import.Name);
             writer.WriteByte((byte)import.Kind);
 
-            int encodeSize = import.EncodeSize();
-            int bytesWritten = import.Encode(writer.Buffer.GetSpan(encodeSize));
-            Debug.Assert(bytesWritten == encodeSize);
-            writer.Buffer.Advance((int)bytesWritten);
+            int encodeSize = import.GetEncodedSize();
+            WasmBinaryWriter binaryWriter = new WasmBinaryWriter(writer.Buffer.GetSpan(encodeSize));
+            import.Encode(ref binaryWriter);
+            writer.Buffer.Advance(encodeSize);
 
             _numImports++;
             return writer;
@@ -646,7 +646,7 @@ namespace ILCompiler.ObjectWriter
                 {
                     WasmDataSectionType.Active =>
                         (int)DwarfHelper.SizeOfULEB128((ulong)_type) + // type indicator
-                        _initExpr.EncodeSize() + // init expr encodeSize
+                        _initExpr.GetEncodedSize() + // init expr encodeSize
                         (int)DwarfHelper.SizeOfULEB128((ulong)_stream.Length), // encodeSize of data length
                     WasmDataSectionType.Passive => 
                         (int)DwarfHelper.SizeOfULEB128((ulong)_type) + // type indicator
@@ -672,7 +672,7 @@ namespace ILCompiler.ObjectWriter
                 {
                     int len = 0;
                     len = DwarfHelper.WriteULEB128(headerBuffer, (ulong)_type);
-                    len += _initExpr.Encode(headerBuffer.Slice(len));
+                    len += _initExpr.EncodeTo(headerBuffer.Slice(len));
                     len += DwarfHelper.WriteULEB128(headerBuffer.Slice(len), (ulong)_stream.Length);
                     return len;
                 }

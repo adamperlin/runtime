@@ -46,26 +46,13 @@ namespace ILCompiler.ObjectWriter.WasmInstructions
             _wasmExprs = wasmExprs;
         }
 
-        public int Encode(Span<byte> buffer)
+        public void Encode(ref WasmBinaryWriter writer)
         {
-            int pos = 0;
             foreach (var expr in _wasmExprs)
             {
-                pos += expr.Encode(buffer.Slice(pos));
+                expr.Encode(ref writer);
             }
-            buffer[pos++] = 0x0B; // end opcode
-            return pos;
-        }
-
-        public int EncodeSize()
-        {
-            int size = 0;
-            foreach (var expr in _wasmExprs)
-            {
-                size += expr.EncodeSize();
-            }
-            // plus one for the end opcode
-            return size + 1;
+            writer.WriteByte(0x0B); // end opcode
         }
     }
 
@@ -77,11 +64,9 @@ namespace ILCompiler.ObjectWriter.WasmInstructions
             _kind = kind;
         }
 
-        public virtual int EncodeSize() => 1;
-        public virtual int Encode(Span<byte> buffer)
+        public virtual void Encode(ref WasmBinaryWriter writer)
         {
-            buffer[0] = (byte)_kind;
-            return 1;
+            writer.WriteByte((byte)_kind);
         }
     }
 
@@ -101,18 +86,10 @@ namespace ILCompiler.ObjectWriter.WasmInstructions
             ConstValue = value;
         }
 
-        public override int EncodeSize()
+        public override void Encode(ref WasmBinaryWriter writer)
         {
-            uint valSize = DwarfHelper.SizeOfSLEB128(ConstValue);
-            return base.EncodeSize() + (int)valSize;
-        }
-
-        public override int Encode(Span<byte> buffer)
-        {
-            int pos = base.Encode(buffer);
-            pos += DwarfHelper.WriteSLEB128(buffer.Slice(pos), ConstValue);
-
-            return pos;
+            base.Encode(ref writer);
+            writer.WriteSLEB128(ConstValue);
         }
     }
 
@@ -127,16 +104,10 @@ namespace ILCompiler.ObjectWriter.WasmInstructions
             GlobalIndex = globalIndex;
         }
 
-        public override int Encode(Span<byte> buffer)
+        public override void Encode(ref WasmBinaryWriter writer)
         {
-            int pos = base.Encode(buffer);
-            pos += DwarfHelper.WriteULEB128(buffer.Slice(pos), (uint)GlobalIndex);
-            return pos;
-        }
-
-        public override int EncodeSize()
-        {
-            return base.EncodeSize() + (int)DwarfHelper.SizeOfULEB128((uint)GlobalIndex);
+            base.Encode(ref writer);
+            writer.WriteULEB128((uint)GlobalIndex);
         }
     }
 
