@@ -81,8 +81,8 @@ namespace ILCompiler.ObjectWriter
             _signatureCount++;
 
             SectionWriter writer = GetOrCreateSection(WasmObjectNodeSection.TypeSection);
-            int signatureSize = signature.EncodeSize();
-            signature.Encode(writer.Buffer.GetSpan(signatureSize));
+            int signatureSize = signature.GetEncodedSize();
+            signature.EncodeTo(writer.Buffer.GetSpan(signatureSize));
             writer.Buffer.Advance(signatureSize);
         }
 
@@ -263,7 +263,7 @@ namespace ILCompiler.ObjectWriter
             SectionWriter writer = GetOrCreateSection(WasmObjectNodeSection.MemorySection);
             writer.WriteByte(0x01); // number of memories
             writer.WriteByte(0x00); // memory limits: flags (0 = only minimum)
-            writer.WriteULEB128(numPages); // memory limits: initial encodeSize in pages (64kb each)
+            writer.WriteULEB128(numPages); // memory limits: initial size in pages (64kb each)
         }
 
         private protected override void EmitSectionsAndLayout()
@@ -279,7 +279,7 @@ namespace ILCompiler.ObjectWriter
             writer.WriteByte(0x70); // element type: funcref
             writer.WriteByte(0x01); // table limits: flags (1 = has maximum)
             writer.WriteULEB128((ulong)0);
-            writer.WriteULEB128((ulong)_methodCount); // table limits: initial encodeSize
+            writer.WriteULEB128((ulong)_methodCount); // table limits: initial size in number of entries
         }
 
         private void PrependCount(WasmSection section, int count)
@@ -332,13 +332,13 @@ namespace ILCompiler.ObjectWriter
 
         private void WriteImports()
         {
-            // Calculate the required memory encodeSize based on the combined data section encodeSize
+            // Calculate the minimum required memory size based on the combined data section size
             ulong contentSize = (ulong)SectionByName(WasmObjectNodeSection.CombinedDataSection.Name).ContentSize;
-            ulong dataPages = (contentSize + (1<<16) - 1) >> 16;
-            int numPages = int.Max((int)dataPages, 1); // Ensure at least one page is allocated for the minimum
+            uint dataPages = checked((uint)((contentSize + (1<<16) - 1) >> 16));
+            uint numPages = Math.Max(dataPages, 1); // Ensure at least one page is allocated for the minimum
 
             _defaultImports[0] = new WasmImport("env", "memory", WasmExternalKind.Memory,
-                new WasmMemoryType(WasmLimitType.HasMin, (uint)numPages)); // memory limits: flags (0 = only minimum)
+                new WasmMemoryType(WasmLimitType.HasMin, numPages)); // memory limits: flags (0 = only minimum)
 
             int[] assignedImportIndices = new int[(int)WasmExternalKind.Count];
             foreach (WasmImport import in _defaultImports)
@@ -536,7 +536,7 @@ namespace ILCompiler.ObjectWriter
 
             // Section header consists of:
             // 1 byte: section type
-            // ULEB128: encodeSize of section
+            // ULEB128: size of section
             headerBuffer[0] = (byte)Type;
             DwarfHelper.WriteULEB128(headerBuffer.Slice(1), contentSize);
 

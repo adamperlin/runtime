@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Collections.Generic;
-using ILCompiler.ObjectWriter.WasmInstructions;
 
 namespace ILCompiler.ObjectWriter
 {
@@ -109,21 +108,15 @@ namespace ILCompiler.ObjectWriter
             return code;
         }
 
-        public int EncodeSize()
+        public int Encode(ref WasmBinaryWriter writer)
         {
-            uint sizeLength = DwarfHelper.SizeOfULEB128((ulong)_types.Length);
-            return (int)(sizeLength + (uint)_types.Length);
-        }
-
-        public int Encode(Span<byte> buffer)
-        {
-            int sizeLength = DwarfHelper.WriteULEB128(buffer, (ulong)_types.Length);
-            Span<byte> rest = buffer.Slice(sizeLength);
+            writer.WriteULEB128((ulong)_types.Length);
             for (int i = 0; i < _types.Length; i++)
             {
-                rest[i] = (byte)_types[i];
+                writer.WriteByte((byte)_types[i]);
             }
-            return (int)(sizeLength + (uint)_types.Length);
+
+            return writer.BytesWritten;
         }
     }
 
@@ -135,7 +128,7 @@ namespace ILCompiler.ObjectWriter
         }
     }
 
-    public struct WasmFuncType : IEquatable<WasmFuncType>
+    public struct WasmFuncType : IEquatable<WasmFuncType>, IWasmEncodable
     {
         private readonly WasmResultType _params;
         private readonly WasmResultType _returns;
@@ -146,21 +139,12 @@ namespace ILCompiler.ObjectWriter
             _returns = returnTypes;
         }
 
-        public readonly int EncodeSize()
+        public readonly void Encode(ref WasmBinaryWriter writer)
         {
-            return 1 + _params.EncodeSize() + _returns.EncodeSize();
-        }
+            writer.WriteByte(0x60); // function type indicator
 
-        public readonly int Encode(Span<byte> buffer)
-        {
-            int totalSize = EncodeSize();
-            buffer[0] = 0x60; // function type indicator
-
-            int paramSize = _params.Encode(buffer.Slice(1));
-            int returnSize = _returns.Encode(buffer.Slice(1 + paramSize));
-            Debug.Assert(totalSize == 1 + paramSize + returnSize);
-
-            return totalSize;
+            _params.Encode(ref writer);
+            _returns.Encode(ref writer);
         }
 
         public bool Equals(WasmFuncType other)
@@ -206,19 +190,19 @@ namespace ILCompiler.ObjectWriter
 
     public class WasmGlobalType : WasmImportType
     {
-        WasmValueType ValueType;
-        WasmMutabilityType Mutability;
+        WasmValueType _valueType;
+        WasmMutabilityType _mutability;
 
         public WasmGlobalType(WasmValueType valueType, WasmMutabilityType mutability)
         {
-            ValueType = valueType;
-            Mutability = mutability;
+            _valueType = valueType;
+            _mutability = mutability;
         }
 
         public override void Encode(ref WasmBinaryWriter writer)
         {
-            writer.WriteByte((byte)ValueType);
-            writer.WriteByte((byte)Mutability);
+            writer.WriteByte((byte)_valueType);
+            writer.WriteByte((byte)_mutability);
         }
     }
 
@@ -230,9 +214,9 @@ namespace ILCompiler.ObjectWriter
   
     public class WasmMemoryType : WasmImportType
     {
-        WasmLimitType LimitType;
-        uint Min;
-        uint? Max;
+        WasmLimitType _limitType;
+        uint _min;
+        uint? _max;
 
         public WasmMemoryType(WasmLimitType limitType, uint min, uint? max = null)
         {
@@ -241,29 +225,29 @@ namespace ILCompiler.ObjectWriter
                 throw new ArgumentException("Max must be provided when LimitType is HasMinAndMax");
             }
 
-            LimitType = limitType;
-            Min = min;
-            Max = max;
+            _limitType = limitType;
+            _min = min;
+            _max = max;
         }
 
         public override void Encode(ref WasmBinaryWriter writer)
         {
-            writer.WriteByte((byte)LimitType);
-            writer.WriteULEB128(Min);
-            if (LimitType == WasmLimitType.HasMinAndMax)
+            writer.WriteByte((byte)_limitType);
+            writer.WriteULEB128(_min);
+            if (_limitType == WasmLimitType.HasMinAndMax)
             {
-                writer.WriteULEB128(Max!.Value);
+                writer.WriteULEB128(_max!.Value);
             }
         }
     }
 
     public class WasmImport : IWasmEncodable
     {
-        public string Module;
-        public string Name;
-        public WasmExternalKind Kind;
-        public int? Index;
-        WasmImportType Import;
+        public readonly string Module;
+        public readonly string Name;
+        public readonly WasmExternalKind Kind;
+        public readonly int? Index;
+        public readonly WasmImportType Import;
 
         public WasmImport(string module, string name, WasmExternalKind kind, WasmImportType import, int? index = null)
         {
@@ -275,7 +259,5 @@ namespace ILCompiler.ObjectWriter
         }
 
         public void Encode(ref WasmBinaryWriter writer) => Import.Encode(ref writer);
-
-#nullable disable
     }
 }
