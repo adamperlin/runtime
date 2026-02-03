@@ -106,20 +106,5 @@ namespace ILCompiler.ObjectWriter
             Debug.Assert(writer.BytesWritten <= buffer.Length, "Buffer overflow during encoding");
             return writer.BytesWritten;
         }
-
-        /// <summary>
-        /// Validates that GetEncodedSize() matches actual bytes written (debug only).
-        /// </summary>
-        [Conditional("DEBUG")]
-        public static void ValidateEncoding(this IWasmEncodable encodable)
-        {
-            int expectedSize = encodable.GetEncodedSize();
-            Span<byte> buffer = expectedSize <= 256 
-                ? stackalloc byte[expectedSize] 
-                : new byte[expectedSize];
-            int actualSize = encodable.EncodeTo(buffer);
-            Debug.Assert(expectedSize == actualSize,
-                $"GetEncodedSize() returned {expectedSize} but EncodeTo() wrote {actualSize} bytes");
-        }
     }
 }
