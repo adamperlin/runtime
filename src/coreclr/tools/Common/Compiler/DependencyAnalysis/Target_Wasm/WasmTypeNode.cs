@@ -4,7 +4,9 @@
 using System;
 using System.Linq;
 using ILCompiler.DependencyAnalysis;
+using ILCompiler.ObjectWriter;
 using Internal.JitInterface;
+using Internal.Text;
 
 namespace ILCompiler.DependencyAnalysis.Wasm
 {
@@ -12,13 +14,14 @@ namespace ILCompiler.DependencyAnalysis.Wasm
     // Represents a WASM type signature, e.g. "(i32, i32) -> (i64)". Used as a relocation target for things like 'call_indirect'.
     // Does not currently support multiple return values; the return type is always the first type in the array and may be Void.
     //
-    public class WasmTypeNode : ObjectNode
+    public class WasmTypeNode : ObjectNode, ISymbolNode
     {
-        private readonly CorInfoWasmType[] _types;
+        readonly WasmFuncType _type;
+        public WasmFuncType Type => _type;
 
-        public WasmTypeNode(CorInfoWasmType[] types)
+        public WasmTypeNode(WasmFuncType type)
         {
-            _types = types;
+            _type = type;
         }
 
         public override bool IsShareable => true;
@@ -27,10 +30,12 @@ namespace ILCompiler.DependencyAnalysis.Wasm
 
         public override bool StaticDependenciesAreComputed => true;
 
+        public int Offset => throw new NotImplementedException();
+
         public override ObjectNodeSection GetSection(NodeFactory factory) => ObjectNodeSection.WasmTypeSection;
 
         protected override string GetName(NodeFactory factory)
-            => $"Wasm Type ({string.Join(",", _types.Skip(1))}) -> {_types.FirstOrDefault()}";
+            => $"Wasm Type Signature: {Type.ToString()}";
 
         public override ObjectData GetData(NodeFactory factory, bool relocsOnly = false)
             => new ObjectData(
@@ -41,13 +46,17 @@ namespace ILCompiler.DependencyAnalysis.Wasm
 
         public override int CompareToImpl(ISortableNode other, CompilerComparer comparer)
         {
-            var wtm = (WasmTypeNode)other;
-            ReadOnlySpan<CorInfoWasmType> lhs = _types, rhs = wtm._types;
+            var wtn = (WasmTypeNode)other;
             // Put shorter signatures earlier in the sort order, on the assumption that they are more likely to be used.
-            int result = lhs.Length.CompareTo(rhs.Length);
+            int result = _type.SignatureLength.CompareTo(wtn.Type.SignatureLength);
             if (result == 0)
-                result = MemoryExtensions.SequenceCompareTo(lhs, rhs);
+                return wtn.Type.CompareTo(_type);
             return result;
+        }
+
+        public void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        {
+            sb.Append(nameMangler.GetMangledStringName(_type.ToStringForMangle()));
         }
     }
 }
