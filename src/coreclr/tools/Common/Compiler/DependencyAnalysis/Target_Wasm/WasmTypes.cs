@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using ILCompiler.DependencyAnalysis;
 using ILCompiler.ObjectWriter;
 using Internal.JitInterface;
@@ -109,6 +111,28 @@ namespace ILCompiler.DependencyAnalysis.Wasm
         }
 
         public int CompareTo(WasmResultType other) => MemoryExtensions.SequenceCompareTo(Types, other.Types);
+
+        public void AppendMangledName(Internal.Text.Utf8StringBuilder sb, bool isReturn = false)
+        {
+            if (isReturn && _types.Length == 0)
+            {
+                // void case
+                sb.Append('v');
+                return;
+            }
+
+            foreach (var type in _types)
+            {
+                sb.Append(type switch {
+                    WasmValueType.V128 => 'V',
+                    WasmValueType.F64  => 'd',
+                    WasmValueType.F32 => 'f',
+                    WasmValueType.I64 => 'j',
+                    WasmValueType.I32 => 'i',
+                    _ => throw new NotImplementedException($"Unknown WasmValueType: {type}"),
+                });
+            }
+        }
     }
 
     public static class WasmResultTypeExtensions
@@ -209,24 +233,18 @@ namespace ILCompiler.DependencyAnalysis.Wasm
             return $"(func (param {paramList}) (result {returnList}))";
         }
 
-        // Returns a string without whitespace suitable for a
-        // mangled name
-        public string ToStringForMangle()
-        {
-            string paramList = _params.ToTypeListString(sep: "_");
-            string returnList = _returns.ToTypeListString(sep: "_");
-
-            if (string.IsNullOrEmpty(returnList))
-                return $"func_param_{paramList}";
-            return $"func_param_{paramList}_result_{returnList}";
-        }
-
         public int CompareTo(WasmFuncType other)
         {
             int paramComparison = _params.CompareTo(other._params);
             if (paramComparison != 0)
                 return paramComparison;
             return _returns.CompareTo(other._returns);
+        }
+
+        public void AppendMangledName(Internal.Text.Utf8StringBuilder sb)
+        {
+            _returns.AppendMangledName(sb, isReturn: true);
+            _params.AppendMangledName(sb);
         }
     }
 }

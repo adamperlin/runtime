@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using ILCompiler.DependencyAnalysis;
-using ILCompiler.ObjectWriter;
 using Internal.JitInterface;
 using Internal.Text;
 
@@ -30,8 +29,6 @@ namespace ILCompiler.DependencyAnalysis.Wasm
 
         public override bool StaticDependenciesAreComputed => true;
 
-        public int Offset => throw new NotImplementedException();
-
         public override ObjectNodeSection GetSection(NodeFactory factory) => ObjectNodeSection.WasmTypeSection;
 
         protected override string GetName(NodeFactory factory)
@@ -54,9 +51,13 @@ namespace ILCompiler.DependencyAnalysis.Wasm
             return result;
         }
 
-        public void AppendMangledName(NameMangler nameMangler, Utf8StringBuilder sb)
+        public void AppendMangledName(NameMangler nameMangler, Internal.Text.Utf8StringBuilder sb)
         {
-            sb.Append(nameMangler.GetMangledStringName(_type.ToStringForMangle()));
+            sb.Append(nameMangler.CompilationUnitPrefix);
+            sb.Append("__wasmtype_"u8);
+            _type.AppendMangledName(sb);
         }
+
+        public int Offset => 0;
     }
 }
