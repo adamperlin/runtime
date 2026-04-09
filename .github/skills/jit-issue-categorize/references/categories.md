@@ -141,6 +141,29 @@ The following is the complete list of valid themes:
 - long-type
 - ref-counts
 - interpreter
+- jit-type-system
+- constant-folding
+- physical-promotion
+- conditional-elimination
+- branchless-codegen
+
+### New themes (added April 2026)
+
+- **jit-type-system** — Issues about the JIT's internal type representation:
+  type widening/narrowing, signedness mismatches on small types,
+  zero-/sign-extension normalization, adding new `TYP_*` entries (e.g.,
+  `TYP_HALF`), and IR type consistency checks.
+- **constant-folding** — Missed constant fold or constant propagation
+  optimizations where the JIT fails to evaluate expressions with known-constant
+  operands at compile time.
+- **physical-promotion** — Issues specific to the physical struct promotion
+  subsystem, including decomposition into `WithElement`/`GetElement`, return
+  buffer handling, and signedness bail-outs during promotion.
+- **conditional-elimination** — Unnecessary conditional checks, overflow
+  checks, or bound checks that the JIT should prove redundant and remove.
+- **branchless-codegen** — Opportunities to emit branchless code (cmov, setcc,
+  conditional select) instead of branches, including if-conversion and
+  branchless clamping patterns.
 
 ### How to pick a theme
 
