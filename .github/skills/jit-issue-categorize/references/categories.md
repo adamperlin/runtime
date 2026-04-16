@@ -54,6 +54,7 @@ An issue may relate to multiple themes -- list the most specific one first.
 
 The following is the complete list of valid themes:
 
+- async
 - md-arrays
 - cse
 - super-pmi
@@ -165,11 +166,13 @@ The following is the complete list of valid themes:
   conditional select) instead of branches, including if-conversion and
   branchless clamping patterns.
 
+- **runtime async** - Issues specific to the runtime async transformations
+
 ### How to pick a theme
 
-1. Check the issue's existing GitHub labels -- many JIT issues already carry
+2. Check the issue's existing GitHub labels -- many JIT issues already carry
    theme-equivalent labels (e.g., `optimization-inlining` -> `inlining`).
-2. Scan the issue title and body for subsystem names.
-3. If the issue spans multiple subsystems, list the primary one first,
-   separated by semicolons in the CSV output.
-4. Use `needs-triage` only as a last resort when no theme can be determined.
+3. Scan the issue title and body for subsystem names.
+4. Scan any attached URLs that seem relevant - diffs, test failures, etc.
+5. If the issue spans multiple subsystems, list the primary one first,
+6. If all else is unclear, use "needs-triage" for the theme. 

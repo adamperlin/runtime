@@ -17,9 +17,9 @@ description: >
 > It does NOT modify issues, add labels, close issues, or post comments.
 
 Batch-categorize all open issues with the `area-CodeGen-coreclr` label in
-`dotnet/runtime`. For each issue, assign a category, theme, skill level, cost
-estimate, impact estimate, and detect up to 4 possible duplicates. Output the
-results as a CSV file.
+`dotnet/runtime`. For each issue, invoke a **Copilot subagent** to assign a
+category, theme, skill level, architecture, OS, stress flag, and a
+close/keep recommendation. Output the results as a CSV file.
 
 ## Reusable Scripts
 
@@ -30,8 +30,8 @@ from scratch.**
 | Script | Purpose |
 |--------|---------|
 | [`scripts/extract_issues.py`](scripts/extract_issues.py) | Reads raw JSON responses from `github-mcp-server-search_issues` and consolidates them into a single JSON file with only the fields needed for classification. |
-| [`scripts/classify_issues.py`](scripts/classify_issues.py) | Classifies issues by category, theme, skill level, cost, impact, architecture, OS, and stress. Integrates duplicate detection. Writes CSV output. |
-| [`scripts/find_duplicates.py`](scripts/find_duplicates.py) | TF-IDF cosine-similarity duplicate detector that runs locally on the fetched issue data (no additional API calls). |
+| [`scripts/classify_issues.py`](scripts/classify_issues.py) | Invokes a Copilot subagent per issue for AI-driven classification. Supports concurrency, resume, and timeout. Writes CSV output. |
+| [`scripts/find_duplicates.py`](scripts/find_duplicates.py) | TF-IDF cosine-similarity duplicate detector (kept for optional use; not called by the default workflow). |
 | [`scripts/validate_csv.py`](scripts/validate_csv.py) | Validates the final CSV: correct column count, allowed enum values, well-formed links. |
 
 ### Quick-start (recommended workflow)
@@ -43,14 +43,16 @@ mkdir raw_pages/
 # 2. Consolidate into one JSON file
 python scripts/extract_issues.py raw_pages/ all_issues.json
 
-# 3. Classify + detect duplicates + write CSV
-cd scripts/  # needed so classify_issues.py can import find_duplicates
-python classify_issues.py ../all_issues.json ../../jit-issues.csv
+# 3. Classify via Copilot subagent + write CSV
+python scripts/classify_issues.py all_issues.json jit-issues.csv --concurrency 5
 
 # 4. Validate
-python validate_csv.py ../../jit-issues.csv
+python scripts/validate_csv.py jit-issues.csv
 
-# 5. Clean up raw data
+# 5. If there were errors, re-run with --resume to retry failed issues
+python scripts/classify_issues.py all_issues.json jit-issues.csv --resume
+
+# 6. Clean up raw data
 rm -rf raw_pages/ all_issues.json
 ```
 
@@ -132,171 +134,58 @@ Each issue record contains: `number`, `title`, `body` (truncated to 2,000
 chars), `labels`, `assignees`, `milestone`, `reactions_plus1`,
 `reactions_total`.
 
-### Step 3: Classify Each Issue
+### Step 3: Classify Each Issue via Copilot Subagent
 
 Run `scripts/classify_issues.py` on the consolidated JSON. This script
-applies heuristic rules (described below) and automatically invokes
-`find_duplicates.py` for duplicate detection.
+invokes a **Copilot subagent** for each issue using the prompt at
+[references/subagent-prompt.md](references/subagent-prompt.md).
 
 ```bash
-cd scripts/
-python classify_issues.py ../all_issues.json ../../jit-issues.csv
+python scripts/classify_issues.py all_issues.json jit-issues.csv --concurrency 5
 ```
 
-The classifier determines the following for each issue:
+#### How the subagent works
 
-#### 3a: Category
+For each issue, the script runs:
 
-Assign exactly **one** category from the list in
-[references/categories.md](references/categories.md).
+```
+copilot --yolo --model "gpt-5.4" --autopilot --no-ask-user \
+  -p "Please use @.github/skills/jit-issue-categorize/references/subagent-prompt \
+      for issue #<NUMBER>"
+```
 
-Use these heuristics to guide classification:
+The subagent reads the issue from GitHub, applies the categories and themes
+from [references/categories.md](references/categories.md), and returns a JSON
+blob with:
 
-| Category | Primary Signals |
-|----------|----------------|
-| `correctness` | Labels: `bug`; keywords: crash, wrong result, miscompile, assert, AV, ICE, internal compiler error, silent bad codegen |
-| `performance` | Labels: `tenet-performance`; title prefix `[Perf]`; keywords: regression, slower, perf |
-| `cq` | Keywords: code quality, codegen quality, missed optimization, suboptimal, unnecessary instruction |
-| `basic-cq` | Keywords: basic code quality, simple optimization, low-hanging, obvious missed opt |
-| `throughput` | Keywords: JIT throughput, compilation time, JIT memory, compile speed |
-| `proposal` | Labels: `api-suggestion`; title starts with `[API Proposal]` |
-| `implementation` | Keywords: implement, add support for, enable, new feature |
-| `eng-sys` | Keywords: CI, build infra, test infra, tooling, SuperPMI, pipeline |
-| `design` | Keywords: design, architecture, RFC, refactor |
-| `planning` | Labels: `tracking`; keywords: plan, roadmap, tracking issue, umbrella |
-| `documentation` | Labels: `documentation`; keywords: docs, comments, README |
-| `testing` | Keywords: test coverage, stress test, test infra |
-| `question` | Labels: `question`; keywords: how to, why does, is it possible |
-| `reach` | Keywords: stretch goal, nice to have, long-term, aspirational |
-| `security` | Keywords: security, CVE, vulnerability, hardening |
+- **category** — exactly one from the predefined list
+- **themes** — at most 2 from the themes list
+- **skillLevel** — `Beginner`, `Intermediate`, or `Expert`
+- **architecture** — `x64`, `x86`, `arm64`, `arm32`, `all`, or blank
+- **os** — `windows`, `linux`, `macos`, `all`, or blank
+- **stress** — `yes` or `no`
+- **shouldClose** — whether the issue should be closed
+- **closeReason** — explanation if shouldClose is true
 
-When multiple categories could apply, prefer the one that best describes the
-*primary ask* of the issue. For example, an issue requesting a new optimization
-that would fix a codegen quality problem is `cq`, not `implementation`.
+The script parses this JSON, merges it with issue metadata (milestone,
+assignees), and writes the CSV.
 
-> **Note on automated perf regression issues:** The performance bot
-> auto-files issues with titles like `[Perf] Linux/arm64: 1 Regression on …`.
-> These dominate the `performance` category (~30-35% of all issues). If the
-> user wants to exclude them, filter on title prefix `[Perf]` or the
-> `untriaged` label.
+#### Options
 
-#### 3b: Theme
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--concurrency N` | 5 | Number of parallel subagent invocations |
+| `--timeout SECS` | 120 | Timeout per subagent invocation in seconds |
+| `--resume` | off | Skip issues already present in the output CSV |
 
-Assign one or more **themes** from the list in
-[references/categories.md](references/categories.md).
+#### Error handling
 
-To determine the theme:
+If a subagent invocation fails (timeout, non-zero exit, or no valid JSON in
+output), the issue is written to the CSV with `ERROR` in the Category column.
+The script does **not** abort — it continues with the remaining issues. Use
+`--resume` to retry only the failed issues.
 
-1. **Check existing labels** -- Many JIT issues carry labels that map directly
-   to themes (e.g., `optimization-cse` -> `cse`, `optimization-inlining` ->
-   `inlining`, `JitStress` -> `gc-stress`, `runtime-async` -> `codegen`).
-2. **Scan the title and body** for JIT subsystem names (register allocator,
-   loop optimization, SSA, etc.).
-3. **Check for hardware/SIMD mentions** -- Issues mentioning AVX, SSE, NEON,
-   SVE, or `System.Runtime.Intrinsics` -> `hardware-intrinsics`. Issues about
-   `Vector<T>`, `Vector128`, `Vector256` codegen -> `vector-codegen`.
-4. If multiple themes apply, list them separated by `;` with the most specific
-   first. Limit to 3 themes per issue.
-5. Use `needs-triage` only if no theme can be determined at all.
-
-> **Pattern-matching pitfalls to avoid:**
-> - `\btest\b` is far too broad — it matches any issue that mentions "test" in
->   any context. Use `test coverage`, `test infra`, `stress test` instead.
-> - `\bbenchmark` matches too many issues. Prefer `benchmark infra`,
->   `BenchmarkDotNet` for the `benchmarks` theme.
-> - `\bbuild\b` matches generic text. Prefer `build break`, `build fail`,
->   `build infra` for the `build` theme.
-> - `\bdiv` without end-of-word boundary matches "provide", "individual", etc.
->   Use `\bdiv\b` or `\bdivis` for the `div-mod-rem` theme.
-> - `\bemit` matches "emit" in many unrelated contexts. Prefer `\bemitt` (for
->   "emitter", "emitting") to target JIT emitter issues specifically.
-> - `arm64` alone should map to architecture, not `hardware-intrinsics`.
->   Only map to `hardware-intrinsics` when specific instructions or intrinsic
->   APIs (e.g., `AdvSimd`, `Arm.`) are mentioned.
-
-#### 3c: Skill Level
-
-Assess the skill level needed to address the issue:
-
-| Level | Indicators |
-|-------|-----------|
-| `Beginner` | Documentation, simple test additions, well-defined small tasks, `good first issue` or `help wanted` labels. |
-| `Intermediate` | Targeted optimizations, adding support for specific patterns, moderate refactoring, familiarity with one JIT subsystem needed. |
-| `Expert` | Fundamental JIT changes, register allocator work, new optimization passes, changes spanning multiple subsystems, deep codegen knowledge required. |
-
-#### 3d: Cost
-
-Estimate the implementation/design/planning time:
-
-| Level | Indicators |
-|-------|-----------|
-| `Low` | < 1 week. Well-scoped, clear path. |
-| `Medium` | 1-4 weeks. Requires design decisions or touches multiple files. |
-| `High` | > 1 month. Major feature, significant refactoring, or research needed. |
-
-#### 3e: Impact
-
-Assess the product/revenue/performance impact:
-
-| Level | Indicators |
-|-------|-----------|
-| `Low` | Edge case, cosmetic, rare scenario, workaround exists. |
-| `Medium` | Targeted improvement for a meaningful set of users. |
-| `High` | Major feature, significant perf win, correctness bug in common scenario, high community demand (many +1 reactions). |
-
-#### 3f: Architecture and OS
-
-Infer from the issue body, labels, and any referenced CI runs:
-
-- **Architecture**: `x64`, `x86`, `arm64`, `arm32`, `all`, or leave blank.
-- **OS**: `windows`, `linux`, `macos`, `all`, or leave blank.
-
-Look for:
-- Explicit mentions ("this only happens on ARM64", "Windows-specific")
-- CI failure links that indicate platform
-- Labels like `os-linux`, `arch-arm64`
-
-If the issue applies to all platforms or doesn't specify, use `all`.
-
-#### 3g: Stress
-
-Set to `yes` if the issue mentions stress testing, GC stress, JIT stress,
-`DOTNET_JitStress`, `DOTNET_GCStress`, or `DOTNET_JitStressModeNames`.
-Otherwise `no` or blank.
-
-#### 3h: Milestone, Assignees, Full Link
-
-Extract directly from the GitHub issue metadata:
-- **Milestone**: The milestone name, or blank if none.
-- **Assignees**: Semicolon-separated GitHub usernames, or blank.
-- **Full link**: `https://github.com/dotnet/runtime/issues/<number>`
-
-### Step 4: Detect Possible Duplicates
-
-`classify_issues.py` automatically calls `find_duplicates.py`, which uses
-**TF-IDF cosine similarity** on issue titles to identify up to 4 possible
-duplicates per issue (similarity threshold ≥ 0.30).
-
-This approach is **local and offline** — it runs on the already-fetched issue
-data without making additional API calls. This is critical for large backlogs
-(1,000+ issues) where per-issue API searches would be impractical.
-
-> **Why not per-issue API search?** With 1,200+ issues, searching GitHub for
-> each issue's keywords would require 1,200+ API calls, take a very long time,
-> and likely hit rate limits. The local TF-IDF approach processes all issues in
-> under a second.
-
-**Limitations of local duplicate detection:**
-- Only compares within the fetched issue set (does not find duplicates among
-  closed issues or issues in other repos).
-- Title-based only — issues with different titles but similar bodies may be
-  missed.
-- Threshold of 0.30 is a reasonable default but may need tuning.
-
-**Important:** Duplicate detection is best-effort. Not every match is a true
-duplicate. The human reviewer makes the final call.
-
-### Step 5: Validate CSV
+### Step 4: Validate CSV
 
 Run `scripts/validate_csv.py` to verify the output:
 
@@ -307,71 +196,70 @@ python scripts/validate_csv.py jit-issues.csv
 This checks:
 - Header matches expected column names
 - All rows have the correct number of columns
-- Category, SkillLevel, Cost, Impact, Stress values are from allowed sets
+- Category, SkillLevel, Stress, ShouldClose values are from allowed sets
 - Full link is a valid GitHub issue URL
+- Reports count of issues recommended to close and classification errors
 
-### Step 6: Present Summary
+### Step 5: Present Summary
 
 After writing the CSV, present a summary to the user:
 
 1. **Total issues processed**: Count of issues categorized.
 2. **Breakdown by category**: How many issues in each category.
 3. **Top themes**: Top 10-15 most common themes.
-4. **Duplicate coverage**: How many issues have at least one duplicate
-   candidate.
-5. **Low-confidence notes**: Mention how many issues got `needs-triage` as
-   their theme, and note any systematic patterns (e.g., bot-generated perf
-   regression issues dominating a category).
+4. **Recommended to close**: How many issues the subagent flagged for closing.
+5. **Classification errors**: How many issues failed subagent invocation
+   (marked as `ERROR`). If any, suggest re-running with `--resume`.
 6. **Output file location**: Path to the CSV file.
 
 ## Modifying the Classification Rules
 
-The classification heuristics live in `scripts/classify_issues.py`. To update
-them:
+Classification is driven by the **subagent prompt** at
+[references/subagent-prompt.md](references/subagent-prompt.md) and the
+**categories/themes reference** at
+[references/categories.md](references/categories.md). To update them:
 
-- **Add a new category keyword**: Add a `(re.compile(…), "category")`
-  entry to the `_KW_CATEGORY` list.
-- **Add a new theme pattern**: Add a `(re.compile(…), "theme")` entry to
-  the `_THEME_PATTERNS` list.
-- **Map a new GitHub label to a theme**: Add an entry to the
-  `_LABEL_TO_THEME` dict.
-- **Adjust duplicate sensitivity**: Change the `threshold` parameter in the
-  `find_duplicates()` call (lower = more candidates, higher = fewer).
+- **Add a new category or theme**: Edit `references/categories.md`.
+- **Change classification guidance**: Edit `references/subagent-prompt.md`
+  (e.g., adjust skill level heuristics, add new assessment criteria).
+- **Change the Copilot model**: Edit the `_build_copilot_command()` function
+  in `scripts/classify_issues.py`.
+- **Change CSV output format**: Edit `references/output-format.md` and update
+  `CSV_COLUMNS` in both `scripts/classify_issues.py` and
+  `scripts/validate_csv.py`.
 
-After modifying, re-run against the same `all_issues.json` to test without
-re-fetching from GitHub.
+After modifying the prompt or categories, re-run against the same
+`all_issues.json` to test without re-fetching from GitHub.
 
 ## Known Issues and Pitfalls
 
 - **GitHub search API 1,000-result cap**: See the date-range-split workaround
   in Step 1. Always verify the extracted issue count matches the total count
   reported by the API.
+- **Subagent invocation speed**: Each subagent call takes ~30-60 seconds. With
+  1,200+ issues at concurrency=5, expect ~4-8 hours for a full run. Use
+  `--resume` to handle interruptions gracefully.
 - **Bot-generated perf issues**: The `[Perf]` automated regression bot
   creates many issues. These inflate the `performance` category to ~30-35% of
   all issues. Consider offering the user an option to exclude them.
-- **`needs-triage` fallback**: ~8-10% of issues may end up with
-  `needs-triage` as their theme because their titles and bodies lack
-  subsystem-specific keywords. This is acceptable — prefer `needs-triage`
-  over incorrect theme assignment.
-- **Body truncation**: Issue bodies are truncated to 2,000 characters for
-  efficiency. Occasionally classification-relevant text appears deeper in the
-  body. This is a reasonable trade-off for processing 1,000+ issues.
-- **`cq` as default category**: Issues that don't match any specific category
-  pattern default to `cq` (code quality), since the majority of JIT issues
-  are about codegen quality. Review the `cq` bucket for miscategorized issues.
+- **Body truncation**: Issue bodies are truncated to 2,000 characters in the
+  consolidated JSON. The subagent reads the full issue from GitHub directly,
+  so this only affects the local data file, not classification quality.
+- **Copilot CLI must be installed**: The `copilot` command must be on `PATH`.
+  The script checks for this at startup and exits with a clear error if not
+  found.
 
 ## Tips
 
 - **Parallel fetching**: Fetch multiple API pages in parallel (e.g., pages
   2-5 simultaneously) to speed up data collection.
 - **Save raw data**: Always save raw JSON responses before processing. This
-  allows re-running classification with updated rules without re-fetching.
-- **Re-run workflow**: To reclassify with updated heuristics, keep the
+  allows re-running classification with updated prompts without re-fetching.
+- **Re-run workflow**: To reclassify with an updated prompt, keep the
   `all_issues.json` file and re-run `classify_issues.py` directly.
-- **Existing labels are strong signals**: If an issue already has a well-known
-  JIT label (e.g., `optimization-loop-opt`), trust it for theme assignment.
+- **Resume after interruption**: If the script is interrupted or times out,
+  re-run with `--resume` to pick up where it left off.
 - **Rate limiting**: GitHub API has rate limits. If fetching many pages,
   use parallel calls where the MCP tool supports it, and report progress.
-- **Confidence notes**: When unsure about a classification, prefer
-  `needs-triage` for theme and note it in the summary rather than guessing
-  incorrectly.
+- **Adjust concurrency**: If seeing many timeouts, reduce `--concurrency`.
+  If the machine and network can handle more, increase it.
