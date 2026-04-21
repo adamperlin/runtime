@@ -1493,6 +1493,7 @@ namespace Internal.JitInterface
         CORJIT_RECOVERABLEERROR = unchecked((int)0x80000005),
         CORJIT_IMPLLIMITATION = unchecked((int)0x80000006),
         CORJIT_R2R_UNSUPPORTED = unchecked((int)0x80000007),
+        CORJIT_REQUESTMINOPT = unchecked((int)0x80000008),
     };
 
     public enum TypeCompareState
@@ -1536,6 +1537,8 @@ namespace Internal.JitInterface
         CORJIT_FLAG_TIER0                   = 26, // This is the initial tier for tiered compilation which should generate code as quickly as possible
         CORJIT_FLAG_TIER1                   = 27, // This is the final tier (for now) for tiered compilation which should generate high quality code
         CORJIT_FLAG_NO_INLINING             = 28, // JIT should not inline any called method into this method
+
+        CORJIT_FLAG_FALLBACK_COMPILE        = 31, // This is a retry compilation after a recoverable failure; suppress NOWAY stress testing
 
         // ARM only
         CORJIT_FLAG_RELATIVE_CODE_RELOCS    = 29, // JIT should generate PC-relative address computations instead of EE relocation records

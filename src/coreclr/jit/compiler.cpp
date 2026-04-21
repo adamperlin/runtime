@@ -7590,8 +7590,6 @@ int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
     //
     InlineInfo* inlineInfo = (InlineInfo*)inlineInfoPtr;
 
-    bool jitFallbackCompile = false;
-START:
     int result = CORJIT_INTERNALERROR;
 
     ArenaAllocator* pAlloc = nullptr;
@@ -7619,7 +7617,6 @@ START:
         Compiler*       pComp;
         Compiler*       pPrevComp;
         ArenaAllocator* pAlloc;
-        bool            jitFallbackCompile;
 
         CORINFO_METHOD_HANDLE methodHnd;
         CORINFO_MODULE_HANDLE classPtr;
@@ -7638,7 +7635,6 @@ START:
     param.pComp              = nullptr;
     param.pPrevComp          = nullptr;
     param.pAlloc             = pAlloc;
-    param.jitFallbackCompile = jitFallbackCompile;
     param.methodHnd          = methodHnd;
     param.classPtr           = classPtr;
     param.compHnd            = compHnd;
@@ -7689,7 +7685,7 @@ START:
             assert(pParam->pComp != nullptr);
 
 #ifdef DEBUG
-            pParam->pComp->jitFallbackCompile = pParam->jitFallbackCompile;
+            pParam->pComp->jitFallbackCompile = pParam->compileFlags->IsSet(JitFlags::JIT_FLAG_FALLBACK_COMPILE);
 #endif
 
             // Now generate the code
@@ -7736,24 +7732,16 @@ START:
 
     result = param.result;
 
-if (!inlineInfo &&
-    (result == CORJIT_INTERNALERROR || result == CORJIT_RECOVERABLEERROR || result == CORJIT_IMPLLIMITATION ||
-     result == CORJIT_R2R_UNSUPPORTED) &&
-    !jitFallbackCompile)
-{
-    // If we failed the JIT, reattempt with debuggable code.
-    jitFallbackCompile = true;
+    if (!inlineInfo &&
+        (result == CORJIT_INTERNALERROR || result == CORJIT_RECOVERABLEERROR || result == CORJIT_IMPLLIMITATION ||
+         result == CORJIT_R2R_UNSUPPORTED) &&
+        !compileFlags->IsSet(JitFlags::JIT_FLAG_FALLBACK_COMPILE))
+    {
+        // Signal the host to reattempt with MIN_OPT in a fresh compilation.
+        return CORJIT_REQUESTMINOPT;
+    }
 
-    // Update the flags for 'safer' code generation.
-    compileFlags->Set(JitFlags::JIT_FLAG_MIN_OPT);
-    compileFlags->Clear(JitFlags::JIT_FLAG_SIZE_OPT);
-    compileFlags->Clear(JitFlags::JIT_FLAG_SPEED_OPT);
-    compileFlags->Clear(JitFlags::JIT_FLAG_BBOPT);
-
-    goto START;
-}
-
-return result;
+    return result;
 }
 
 #if defined(UNIX_AMD64_ABI)

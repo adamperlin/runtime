@@ -334,14 +334,27 @@ ReplayResults JitInstance::CompileMethod(MethodContext* MethodToCompile, int mcI
             }
         }
 
-        if ((jitResult == CORJIT_OK) || (jitResult == CORJIT_BADCODE) || (jitResult == CORJIT_R2R_UNSUPPORTED))
+        if ((jitResult == CORJIT_OK) || (jitResult == CORJIT_BADCODE) || (jitResult == CORJIT_R2R_UNSUPPORTED) || (jitResult == CORJIT_REQUESTMINOPT))
         {
             // capture the results of compilation
             pParam->pThis->mc->cr->recCompileMethod(&NEntryBlock, &NCodeSizeBlock, jitResult);
             pParam->pThis->mc->cr->recAllocMemCapture();
             pParam->pThis->mc->cr->recAllocGCInfoCapture();
 
-            pParam->pThis->mc->cr->recMessageLog(jitResult == CORJIT_OK ? "Successful Compile" : "Successful Compile (BADCODE)");
+            const char* compileResultMessage;
+            if (jitResult == CORJIT_OK)
+            {
+                compileResultMessage = "Successful Compile";
+            }
+            else if (jitResult == CORJIT_REQUESTMINOPT)
+            {
+                compileResultMessage = "Compile requesting MIN_OPT retry";
+            }
+            else
+            {
+                compileResultMessage = "Successful Compile (BADCODE)";
+            }
+            pParam->pThis->mc->cr->recMessageLog(compileResultMessage);
         }
         else
         {

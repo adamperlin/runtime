@@ -13076,6 +13076,7 @@ static CorJitResult invokeCompileMethod(EECodeGenManager *jitMgr,
     if (jitCompiler != NULL)
     {
         CORJIT_FLAGS* jitFlags = comp->getJitFlagsInternal();
+        CORJIT_FLAGS savedFlags = *jitFlags;
         jitFlags->Set(CORJIT_FLAGS::CORJIT_FLAG_ALT_JIT);
 
         ret = jitCompiler->compileMethod(comp,
@@ -13084,14 +13085,36 @@ static CorJitResult invokeCompileMethod(EECodeGenManager *jitMgr,
                                          nativeEntry,
                                          nativeSizeOfCode);
 
+        // If the JIT requests a retry with MIN_OPT, reset and retry once.
+        if (ret == CORJIT_REQUESTMINOPT)
+        {
+            comp->ResetForJitRetry();
+            jitFlags->Set(CORJIT_FLAGS::CORJIT_FLAG_MIN_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_SIZE_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_SPEED_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_BBOPT);
+            jitFlags->Set(CORJIT_FLAGS::CORJIT_FLAG_FALLBACK_COMPILE);
+
+            ret = jitCompiler->compileMethod(comp,
+                                             methodInfo,
+                                             CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
+                                             nativeEntry,
+                                             nativeSizeOfCode);
+        }
+
         if (FAILED(ret))
         {
             comp->ResetForJitRetry();
             ret = CORJIT_SKIPPED;
-        }
 
-        // Restore the original JIT flags
-        jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_ALT_JIT);
+            // Restore original flags so the main JIT gets a clean slate.
+            *jitFlags = savedFlags;
+        }
+        else
+        {
+            // Restore the original JIT flags (clear ALT_JIT at minimum).
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_ALT_JIT);
+        }
     }
 #endif // defined(ALLOW_SXS_JIT)
 
@@ -13104,6 +13127,25 @@ static CorJitResult invokeCompileMethod(EECodeGenManager *jitMgr,
                                          CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
                                          nativeEntry,
                                          nativeSizeOfCode);
+
+        // If the JIT requests a retry with MIN_OPT, reset and retry once.
+        if (ret == CORJIT_REQUESTMINOPT)
+        {
+            comp->ResetForJitRetry();
+            CORJIT_FLAGS* jitFlags = comp->getJitFlagsInternal();
+            jitFlags->Set(CORJIT_FLAGS::CORJIT_FLAG_MIN_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_SIZE_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_SPEED_OPT);
+            jitFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_BBOPT);
+            jitFlags->Set(CORJIT_FLAGS::CORJIT_FLAG_FALLBACK_COMPILE);
+
+            ret = jitCompiler->compileMethod(comp,
+                                             methodInfo,
+                                             CORJIT_FLAGS::CORJIT_FLAG_CALL_GETJITFLAGS,
+                                             nativeEntry,
+                                             nativeSizeOfCode);
+        }
+
         if (FAILED(ret))
         {
             comp->ResetForJitRetry();
@@ -13248,6 +13290,7 @@ void ThrowExceptionForJit(HRESULT res)
             break;
 
         case CORJIT_INTERNALERROR:
+        case CORJIT_REQUESTMINOPT:
             COMPlusThrow(kInvalidProgramException, (UINT) IDS_EE_JIT_COMPILER_ERROR);
             break;
 

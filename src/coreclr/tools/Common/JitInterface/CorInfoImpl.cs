@@ -344,6 +344,12 @@ namespace Internal.JitInterface
             var result = JitCompileMethod(out exception,
                     _jit, (IntPtr)(&_this), _unmanagedCallbacks,
                     ref methodInfo, (uint)CorJitFlag.CORJIT_FLAG_CALL_GETJITFLAGS, out nativeEntry, out codeSize);
+
+            // In the CoreCLR VM, CORJIT_REQUESTMINOPT is handled by invokeCompileMethod which
+            // resets host state and retries. For NativeAOT, we do not retry because the host-side
+            // per-compilation state (unwind info, debug info, etc.) cannot be reset mid-compilation.
+            // Treat it as an error — the method cannot be compiled at this optimization level.
+
             if (exception != IntPtr.Zero)
             {
                 if (_lastException != null)
@@ -383,7 +389,7 @@ namespace Internal.JitInterface
             {
                 ThrowHelper.ThrowInvalidProgramException();
             }
-            if (result == CorJitResult.CORJIT_IMPLLIMITATION || result == CorJitResult.CORJIT_R2R_UNSUPPORTED)
+            if (result == CorJitResult.CORJIT_IMPLLIMITATION || result == CorJitResult.CORJIT_R2R_UNSUPPORTED || result == CorJitResult.CORJIT_REQUESTMINOPT)
             {
 #if READYTORUN
                 throw new RequiresRuntimeJitException("JIT implementation limitation");

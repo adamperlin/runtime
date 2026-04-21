@@ -39,6 +39,8 @@ public:
         JIT_FLAG_TIER1                   = 27, // This is the final tier (for now) for tiered compilation which should generate high quality code
         JIT_FLAG_NO_INLINING             = 28, // JIT should not inline any called method into this method
 
+        JIT_FLAG_FALLBACK_COMPILE        = 31, // This is a retry compilation after a recoverable failure; suppress NOWAY stress testing
+
 #if defined(TARGET_ARM)
         JIT_FLAG_RELATIVE_CODE_RELOCS    = 29, // JIT should generate PC-relative address computations instead of EE relocation records
         JIT_FLAG_SOFTFP_ABI              = 30, // Enable armel calling convention
@@ -137,6 +139,7 @@ public:
         FLAGS_EQUAL(CORJIT_FLAGS::CORJIT_FLAG_TIER0, JIT_FLAG_TIER0);
         FLAGS_EQUAL(CORJIT_FLAGS::CORJIT_FLAG_TIER1, JIT_FLAG_TIER1);
         FLAGS_EQUAL(CORJIT_FLAGS::CORJIT_FLAG_NO_INLINING, JIT_FLAG_NO_INLINING);
+        FLAGS_EQUAL(CORJIT_FLAGS::CORJIT_FLAG_FALLBACK_COMPILE, JIT_FLAG_FALLBACK_COMPILE);
 
 #if defined(TARGET_ARM)
         FLAGS_EQUAL(CORJIT_FLAGS::CORJIT_FLAG_RELATIVE_CODE_RELOCS, JIT_FLAG_RELATIVE_CODE_RELOCS);

@@ -252,6 +252,7 @@ std::string SpmiDumpHelper::DumpJitFlags(unsigned long long flags)
     AddFlag(TIER0);
     AddFlag(TIER1);
     AddFlag(NO_INLINING);
+    AddFlagNumeric(FALLBACK_COMPILE, 31);
 
     // arm32 only
     //
