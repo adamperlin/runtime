@@ -7,7 +7,7 @@ Usage:
 Checks:
 - Header matches the expected column names.
 - All rows have the correct number of columns.
-- Category, SkillLevel, Stress, and ShouldClose values are from allowed sets.
+- Category, SkillLevel, Stress, and NeedsAttention values are from allowed sets.
 - Full link column is a valid GitHub issue URL.
 """
 
@@ -23,8 +23,8 @@ EXPECTED_COLUMNS = [
     "Architecture",
     "OS",
     "Stress",
-    "ShouldClose",
-    "CloseReason",
+    "NeedsAttention",
+    "AttentionReason",
     "Milestone",
     "Assignees",
     "Full link",
@@ -39,7 +39,7 @@ VALID_CATEGORIES = {
 
 VALID_SKILL = {"Beginner", "Intermediate", "Expert", ""}
 VALID_STRESS = {"yes", "no", ""}
-VALID_SHOULD_CLOSE = {"yes", "no", ""}
+VALID_NEEDS_ATTENTION = {"yes", "no", ""}
 
 LINK_RE = re.compile(r"^https://github\.com/dotnet/runtime/issues/\d+$")
 
@@ -74,7 +74,7 @@ def validate(csv_path: str) -> bool:
         cat = row[1]
         skill = row[3]
         stress = row[6]
-        should_close = row[7]
+        needs_attention = row[7]
         link = row[11]
 
         if cat not in VALID_CATEGORIES:
@@ -85,13 +85,13 @@ def validate(csv_path: str) -> bool:
             errors.append(f"Line {i} (#{issue_id}): invalid skill '{skill}'")
         if stress not in VALID_STRESS:
             warnings.append(f"Line {i} (#{issue_id}): unexpected stress value '{stress}'")
-        if should_close not in VALID_SHOULD_CLOSE:
-            warnings.append(f"Line {i} (#{issue_id}): unexpected ShouldClose value '{should_close}'")
+        if needs_attention not in VALID_NEEDS_ATTENTION:
+            warnings.append(f"Line {i} (#{issue_id}): unexpected NeedsAttention value '{needs_attention}'")
         if not LINK_RE.match(link):
             errors.append(f"Line {i} (#{issue_id}): bad link '{link}'")
 
-    close_count = sum(1 for r in rows if len(r) > 7 and r[7] == "yes")
-    print(f"Issues recommended to close: {close_count}")
+    attention_count = sum(1 for r in rows if len(r) > 7 and r[7] == "yes")
+    print(f"Issues needing attention: {attention_count}")
     if error_count:
         print(f"Issues with classification errors: {error_count}")
 

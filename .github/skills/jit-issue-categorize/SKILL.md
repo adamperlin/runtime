@@ -19,7 +19,7 @@ description: >
 Batch-categorize all open issues with the `area-CodeGen-coreclr` label in
 `dotnet/runtime`. For each issue, invoke a **Copilot subagent** to assign a
 category, theme, skill level, architecture, OS, stress flag, and a
-close/keep recommendation. Output the results as a CSV file.
+needs-attention recommendation. Output the results as a CSV file.
 
 ## Reusable Scripts
 
@@ -164,8 +164,8 @@ blob with:
 - **architecture** — `x64`, `x86`, `arm64`, `arm32`, `all`, or blank
 - **os** — `windows`, `linux`, `macos`, `all`, or blank
 - **stress** — `yes` or `no`
-- **shouldClose** — whether the issue should be closed
-- **closeReason** — explanation if shouldClose is true
+- **needsAttention** — whether the issue needs attention
+- **attentionReason** — explanation if needsAttention is true
 
 The script parses this JSON, merges it with issue metadata (milestone,
 assignees), and writes the CSV.
@@ -196,9 +196,9 @@ python scripts/validate_csv.py jit-issues.csv
 This checks:
 - Header matches expected column names
 - All rows have the correct number of columns
-- Category, SkillLevel, Stress, ShouldClose values are from allowed sets
+- Category, SkillLevel, Stress, NeedsAttention values are from allowed sets
 - Full link is a valid GitHub issue URL
-- Reports count of issues recommended to close and classification errors
+- Reports count of issues flagged for attention and classification errors
 
 ### Step 5: Present Summary
 
@@ -207,7 +207,7 @@ After writing the CSV, present a summary to the user:
 1. **Total issues processed**: Count of issues categorized.
 2. **Breakdown by category**: How many issues in each category.
 3. **Top themes**: Top 10-15 most common themes.
-4. **Recommended to close**: How many issues the subagent flagged for closing.
+4. **Needs attention**: How many issues the subagent flagged as needing attention.
 5. **Classification errors**: How many issues failed subagent invocation
    (marked as `ERROR`). If any, suggest re-running with `--resume`.
 6. **Output file location**: Path to the CSV file.

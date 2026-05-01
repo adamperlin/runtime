@@ -13,13 +13,14 @@ Analyze the issue and produce a structured JSON classification.
 
 ### Step 1: Determine Relevance
 
-Consider relevance and the impact of addressing this issue at all. Is this a
-critical bug or a huge user perf/feature win, or is this simply a nice to have
-feature? Does this issue still seem applicable to RyuJIT today? Is it related
-to something which is now deprecated, or which seems untenable to ever fix
-(consider architectural suggestions that would require a massive rework of the
-codebase here; these are probably less likely to be a priority without a
-significant justification).
+Some issues may be particularly relevant to JIT developers. In particular, consider:
+  - Perf regressions which need triage and repro
+  - Bug reports from users that need triage and repro
+  - Regressions in benchmarks that have clear, actionable data.
+
+In older issues, consider if a repro might resolve the issue for good, i.e., is the issue a perf regression
+from an older .NET version which could have been fixed in a newer version and this is something we could confirm?
+Wishes, vague feature requests, and requests that don't have an easy action item are likely to need less timely attention. 
 
 ### Step 2: Categorize and Assign Themes
 
@@ -61,8 +62,10 @@ Otherwise `no`.
 
 ## Output
 
-A JSON blob in the following format. Output **only** the JSON — no other text
-before or after it:
+A JSON blob in the following format. If the caller specifies a file path to
+write to, write **only** the JSON object to that file — no markdown fences,
+no commentary, no extra text. If no file path is given, output **only** the
+JSON to stdout.
 
 ```json
 {
@@ -74,8 +77,8 @@ before or after it:
     "architecture": "<x64|x86|arm64|arm32|all or blank, semicolon-separated>",
     "os": "<windows|linux|macos|all or blank, semicolon-separated>",
     "stress": "yes|no",
-    "shouldClose": true,
-    "closeReason": "<reason or empty string>"
+    "needsAttention": true,
+    "attentionReason": "<reason or empty string>"
 }
 ```
 
@@ -88,5 +91,5 @@ Field rules:
 - `os`: One or more of `windows`, `linux`, `macos`, `all`
   (semicolon-separated), or empty string.
 - `stress`: `yes` or `no`.
-- `shouldClose`: Boolean. `true` if the issue should be closed.
-- `closeReason`: Non-empty only when `shouldClose` is `true`.
+- `needsAttention`: Boolean. `true` if the issue needs attention.
+- `attentionReason`: Non-empty only when `needsAttention` is `true`.

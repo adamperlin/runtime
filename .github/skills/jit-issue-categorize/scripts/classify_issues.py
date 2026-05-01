@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -41,8 +42,8 @@ CSV_COLUMNS = [
     "Architecture",
     "OS",
     "Stress",
-    "ShouldClose",
-    "CloseReason",
+    "NeedsAttention",
+    "AttentionReason",
     "Milestone",
     "Assignees",
     "Full link",
@@ -58,10 +59,18 @@ _JSON_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
 
 # ── Subagent invocation ────────────────────────────────────────────────────
 
-def _build_copilot_command(issue_number: int) -> list[str]:
-    """Build the copilot CLI command for classifying one issue."""
+def _build_copilot_command(issue_number: int, output_file: str) -> list[str]:
+    """Build the copilot CLI command for classifying one issue.
+
+    The subagent is instructed to write its JSON classification to
+    *output_file* so that this script can read it back reliably, avoiding
+    the need to parse the rich terminal UI output from ``copilot``.
+    """
     prompt = (
-        f"Please use @{_SUBAGENT_PROMPT_REF} for issue #{issue_number}"
+        f"Please use @{_SUBAGENT_PROMPT_REF} for issue #{issue_number}. "
+        f"IMPORTANT: Write ONLY the final JSON classification object to the "
+        f"file at '{output_file}'. The file must contain nothing but the "
+        f"JSON object — no markdown fences, no commentary."
     )
     return [
         "copilot",
@@ -73,8 +82,31 @@ def _build_copilot_command(issue_number: int) -> list[str]:
     ]
 
 
-def _extract_json(text: str) -> dict | None:
-    """Extract the first valid JSON object from subagent output."""
+def _read_json_file(path: str) -> dict | None:
+    """Read and parse a JSON classification from *path*.
+
+    Falls back to regex extraction in case the subagent wrapped the JSON
+    in markdown fences or other text.
+    """
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read().strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+
+    # Fast-path: the file contains valid JSON directly.
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict) and "category" in obj:
+            return obj
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: extract JSON from surrounding text / markdown fences.
     for match in _JSON_RE.finditer(text):
         try:
             obj = json.loads(match.group())
@@ -88,40 +120,45 @@ def _extract_json(text: str) -> dict | None:
 def _classify_one(issue: dict, timeout: int) -> dict:
     """Invoke the copilot subagent for a single issue and return a row dict."""
     number = issue["number"]
-    cmd = _build_copilot_command(number)
+
+    # Create a temp file for the subagent to write its JSON result into.
+    fd, tmp_path = tempfile.mkstemp(suffix=f"_issue{number}.json", prefix="jit_classify_")
+    os.close(fd)
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(_REPO_ROOT),
-        )
-    except subprocess.TimeoutExpired:
-        print(f"  TIMEOUT: issue #{number}", file=sys.stderr)
-        return _error_row(issue)
-    except FileNotFoundError:
-        print(
-            "ERROR: 'copilot' command not found. Ensure the Copilot CLI is "
-            "installed and on your PATH.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        cmd = _build_copilot_command(number, tmp_path)
+        try:
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(_REPO_ROOT),
+                encoding="utf-8",
+                errors="replace",
+            )
+        except subprocess.TimeoutExpired:
+            print(f"  TIMEOUT: issue #{number}", file=sys.stderr)
+            return _error_row(issue)
+        except FileNotFoundError:
+            print(
+                "ERROR: 'copilot' command not found. Ensure the Copilot CLI is "
+                "installed and on your PATH.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    if result.returncode != 0:
-        print(
-            f"  FAILED (exit {result.returncode}): issue #{number}",
-            file=sys.stderr,
-        )
-        return _error_row(issue)
+        parsed = _read_json_file(tmp_path)
+        if parsed is None:
+            print(f"  NO JSON: issue #{number}", file=sys.stderr)
+            return _error_row(issue)
 
-    parsed = _extract_json(result.stdout)
-    if parsed is None:
-        print(f"  NO JSON: issue #{number}", file=sys.stderr)
-        return _error_row(issue)
-
-    return _build_row(issue, parsed)
+        return _build_row(issue, parsed)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 def _error_row(issue: dict) -> dict:
@@ -134,8 +171,8 @@ def _error_row(issue: dict) -> dict:
         "arch": "",
         "os": "",
         "stress": "",
-        "should_close": "",
-        "close_reason": "",
+        "needs_attention": "",
+        "attention_reason": "",
         "milestone": issue.get("milestone", ""),
         "assignees": ";".join(issue.get("assignees", [])),
         "link": f"https://github.com/dotnet/runtime/issues/{issue['number']}",
@@ -150,11 +187,11 @@ def _build_row(issue: dict, parsed: dict) -> dict:
     else:
         theme_str = str(themes)
 
-    should_close = parsed.get("shouldClose", False)
-    if isinstance(should_close, bool):
-        should_close_str = "yes" if should_close else "no"
+    needs_attention = parsed.get("needsAttention", False)
+    if isinstance(needs_attention, bool):
+        needs_attention_str = "yes" if needs_attention else "no"
     else:
-        should_close_str = str(should_close).lower()
+        needs_attention_str = str(needs_attention).lower()
 
     return {
         "number": issue["number"],
@@ -164,8 +201,8 @@ def _build_row(issue: dict, parsed: dict) -> dict:
         "arch": parsed.get("architecture", ""),
         "os": parsed.get("os", ""),
         "stress": parsed.get("stress", ""),
-        "should_close": should_close_str,
-        "close_reason": parsed.get("closeReason", "") if should_close_str == "yes" else "",
+        "needs_attention": needs_attention_str,
+        "attention_reason": parsed.get("attentionReason", "") if needs_attention_str == "yes" else "",
         "milestone": issue.get("milestone", ""),
         "assignees": ";".join(issue.get("assignees", [])),
         "link": f"https://github.com/dotnet/runtime/issues/{issue['number']}",
@@ -213,8 +250,8 @@ def write_csv(
                 c["arch"],
                 c["os"],
                 c["stress"],
-                c["should_close"],
-                c["close_reason"],
+                c["needs_attention"],
+                c["attention_reason"],
                 c["milestone"],
                 c["assignees"],
                 c["link"],
@@ -234,7 +271,7 @@ def print_summary(classifications: list[dict]) -> None:
             if t:
                 themes_counter[t] += 1
 
-    close_count = sum(1 for c in classifications if c["should_close"] == "yes")
+    attention_count = sum(1 for c in classifications if c["needs_attention"] == "yes")
     error_count = sum(1 for c in classifications if c["category"] == "ERROR")
 
     print(f"\n{'='*60}")
@@ -246,7 +283,7 @@ def print_summary(classifications: list[dict]) -> None:
     print("\nTop 15 themes:")
     for theme, cnt in themes_counter.most_common(15):
         print(f"  {theme:25s} {cnt:5d}")
-    print(f"\nRecommended to close: {close_count}")
+    print(f"\nNeeds attention: {attention_count}")
     if error_count:
         print(f"Classification errors: {error_count} (re-run with --resume)")
     print()

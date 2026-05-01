@@ -14,8 +14,8 @@ skill. The output file should be importable into Excel or Google Sheets.
 | 5 | `Architecture` | String | `x64`, `x86`, `arm64`, `arm32`, `all`, or blank | Target architecture, inferred from issue body, labels, or CI. Multiple values separated by `;`. |
 | 6 | `OS` | String | `windows`, `linux`, `macos`, `all`, or blank | Target OS, inferred from issue body, labels, or CI. Multiple values separated by `;`. |
 | 7 | `Stress` | Boolean | `yes`, `no`, or blank | Whether the issue relates to stress testing or GC stress. |
-| 8 | `ShouldClose` | Boolean | `yes`, `no` | Whether the issue should be closed (no longer relevant, duplicate, untenable, etc.). |
-| 9 | `CloseReason` | String | Free text or blank | Reason for closing. Non-blank only when `ShouldClose` is `yes`. |
+| 8 | `NeedsAttention` | Boolean | `yes`, `no` | Whether the issue should be labeled for extra attention |
+| 9 | `AttentionReason` | String | Free text or blank | Reason the issue needs attention. Non-blank only when NeedsAttention is "yes". |
 | 10 | `Milestone` | String | Any milestone name or blank | The milestone attached to the issue on GitHub, if any. |
 | 11 | `Assignees` | String | GitHub usernames or blank | Semicolon-separated list of assigned users. |
 | 12 | `Full link` | URL | `https://github.com/dotnet/runtime/issues/<id>` | Direct link to the issue. |
@@ -36,15 +36,6 @@ skill. The output file should be importable into Excel or Google Sheets.
 - **ERROR rows**: If a subagent invocation fails for a given issue, the
   `Category` column is set to `ERROR` and remaining classification fields are
   left blank. These rows should be retried manually.
-
-## Example
-
-```csv
-Github Issue ID,Category,Theme,SkillLevel,Architecture,OS,Stress,ShouldClose,CloseReason,Milestone,Assignees,Full link
-98765,correctness,register-allocator,Expert,x64,linux,no,no,,10.0,user1;user2,https://github.com/dotnet/runtime/issues/98765
-87654,cq,inlining;structs,Intermediate,all,all,no,no,,,user3,https://github.com/dotnet/runtime/issues/87654
-76543,eng-sys,super-pmi,Beginner,all,all,no,yes,Superseded by #80000,Future,,https://github.com/dotnet/runtime/issues/76543
-```
 
 ## Skill Level Heuristics
 
